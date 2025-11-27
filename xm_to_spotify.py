@@ -21,6 +21,7 @@ PLAYLIST_LIMIT = 9900 # Buffer below 10,000 to be safe
 
 # --- AUTHENTICATION ---
 def get_access_token():
+    # Official Spotify Token URL
     url = "https://accounts.spotify.com/api/token"
     data = {
         "grant_type": "refresh_token",
@@ -83,7 +84,7 @@ def save_state(state):
 
 # --- XM FETCHING ---
 def fetch_xm_tracks():
-    scraper = cloudscraper.create_scraper() # Fixes 403 Error
+    scraper = cloudscraper.create_scraper()
     try:
         url = f"https://xmplaylist.com/api/station/{XM_CHANNEL}"
         resp = scraper.get(url)
@@ -95,11 +96,16 @@ def fetch_xm_tracks():
 
     # Extract Spotify URIs
     uris = []
-    for item in data.get("results", []):
-        for link in item.get("links", []):
-            if link["site"] == "spotify" and "/track/" in link["url"]:
-                tid = link["url"].split("/track/")[1].split("?")[0]
-                uris.append(f"spotify:track:{tid}")
+    # Use (item.get(...) or []) to handle cases where 'results' or 'links' is None/null
+    for item in (data.get("results") or []):
+        for link in (item.get("links") or []):
+            if isinstance(link, dict) and link.get("site") == "spotify":
+                if "url" in link and "/track/" in link["url"]:
+                    try:
+                        tid = link["url"].split("/track/")[1].split("?")[0]
+                        uris.append(f"spotify:track:{tid}")
+                    except IndexError:
+                        continue # Skip malformed URLs
                 break
     return uris
 
@@ -132,7 +138,6 @@ if __name__ == "__main__":
     # 2. Create new playlist if needed
     if need_new_playlist:
         user_id = get_user_id(token)
-        # We name the current one "Current" or "Latest" so it's easy to find
         new_name = f"{PLAYLIST_BASE_NAME} - Vol {current_vol} (Current)"
         current_id = create_playlist(token, user_id, new_name)
         print(f"Created new playlist: {new_name}")
