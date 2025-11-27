@@ -46,18 +46,18 @@ Securely store the credentials within the repository's GitHub Actions secrets va
 
 Modify `xm_to_spotify.py` to define the target data source. Update the `XML_CHANNEL` constant to match the desired station identifier as defined in the XMPlaylist URL schema.
 
-```python
+`python
 # Constants
-XML_CHANNEL = "1stwave"  # Example: "octone", "lithium", "bpm"
+XML_CHANNEL = "1stwave"  # Example: "octone", "lithium", "bpm"`
 
 ### **5. Scheduling Strategy**
 
 The execution frequency is defined in `.github/workflows/main.yml`. The default configuration executes the synchronization job every 15 minutes to minimize data gaps.
 
-```python
+`python
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/15 * * * *'`
 
 ### **Architecture & File Structure**
 
@@ -71,9 +71,9 @@ on:
 
 ### **Operational Constraints**
 
-* Repository Visibility: GitHub Actions offers unlimited execution minutes for public repositories. Private repositories are subject to monthly quotas (typically 2,000 minutes for free accounts). Given the frequent schedule (every 15 minutes), a private repository may exceed this quota.
+- **Repository Visibility:** GitHub Actions offers unlimited execution minutes for public repositories. Private repositories are subject to monthly quotas (typically 2,000 minutes for free accounts). Given the frequent schedule (every 15 minutes), a private repository may exceed this quota.
 
-* State Reset Procedure: To purge the archive and restart collection:
+- **State Reset Procedure:** To purge the archive and restart collection:
 
 1. Manually delete the generated playlists within the Spotify application.
 
