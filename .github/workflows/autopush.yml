@@ -1,8 +1,9 @@
 name: xm-to-spotify-1stwave
+
 on:
   schedule:
     - cron: '0 * * * *'  # runs hourly
-  workflow_dispatch:      # allows manual run
+  workflow_dispatch:
 
 jobs:
   update_playlist:
@@ -20,8 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          # If you have any dependencies, list them here
-          # e.g., pip install requests
+          pip3 install requests
 
       - name: Run XM to Spotify script
         env:
