@@ -2,108 +2,154 @@ import os
 import requests
 import time
 import json
-import cloudscraper  # NEW IMPORT: Handles the WAF/403 error
+import cloudscraper
 
-# Read secrets from environment variables
+# --- CONFIGURATION ---
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("SPOTIFY_REFRESH_TOKEN")
 
+# Files to store state
+XM_JSON_FILE = "xmplaylist.json"
+STATE_FILE = "spotify_state.json" # Stores current playlist ID and Volume #
+
 # Constants
 XM_CHANNEL = "1stwave"
-XM_JSON_FILE = "xmplaylist.json"
+PLAYLIST_BASE_NAME = f"XM {XM_CHANNEL} Archive"
 MAX_TRACKS_PER_REQUEST = 100
-MAX_TRACKS_PER_PLAYLIST = 10000
+PLAYLIST_LIMIT = 9900 # Buffer below 10,000 to be safe
 
-# --- FIX 1: Correct Spotify API Endpoints ---
+# --- AUTHENTICATION ---
 def get_access_token():
-    # FIXED: Use the official Spotify Accounts URL
     url = "https://accounts.spotify.com/api/token"
-    
     data = {
         "grant_type": "refresh_token",
         "refresh_token": REFRESH_TOKEN,
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
     }
-    
     response = requests.post(url, data=data)
     response.raise_for_status()
     return response.json()["access_token"]
 
-def chunked(iterable, size):
-    for i in range(0, len(iterable), size):
-        yield iterable[i:i + size]
+def get_headers(token):
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-def add_tracks_to_playlist(playlist_id, track_uris):
-    if not track_uris:
-        return
+# --- SPOTIFY API HELPERS ---
+def get_user_id(token):
+    url = "https://api.spotify.com/v1/me"
+    response = requests.get(url, headers=get_headers(token))
+    response.raise_for_status()
+    return response.json()["id"]
 
-    access_token = get_access_token()
-    headers = {"Authorization": f"Bearer {access_token}"}
+def get_playlist_size(token, playlist_id):
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
+    response = requests.get(url, headers=get_headers(token))
+    if response.status_code == 404:
+        return None # Playlist was deleted or lost
+    response.raise_for_status()
+    return response.json()["tracks"]["total"]
 
-    if len(track_uris) > MAX_TRACKS_PER_PLAYLIST:
-        track_uris = track_uris[:MAX_TRACKS_PER_PLAYLIST]
-        print(f"Warning: Only adding first {MAX_TRACKS_PER_PLAYLIST} tracks.")
+def create_playlist(token, user_id, name):
+    url = f"https://api.spotify.com/v1/users/{user_id}/playlists"
+    data = {"name": name, "public": False, "description": "Auto-generated from XMPlaylist"}
+    response = requests.post(url, headers=get_headers(token), json=data)
+    response.raise_for_status()
+    return response.json()["id"]
 
-    for chunk in chunked(track_uris, MAX_TRACKS_PER_REQUEST):
-        # FIXED: Use the official Spotify API URL
+def rename_playlist(token, playlist_id, new_name):
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
+    data = {"name": new_name}
+    requests.put(url, headers=get_headers(token), json=data)
+
+def add_tracks(token, playlist_id, track_uris):
+    # Filter out duplicates or handle batching
+    for i in range(0, len(track_uris), MAX_TRACKS_PER_REQUEST):
+        chunk = track_uris[i:i + MAX_TRACKS_PER_REQUEST]
         url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
-        
-        data = {"uris": chunk}
-        response = requests.post(url, json=data, headers=headers)
-        
-        if response.status_code not in [200, 201]:
-            print("Error adding tracks:", response.text)
-        time.sleep(0.1) 
+        requests.post(url, headers=get_headers(token), json={"uris": chunk})
+        time.sleep(0.5)
 
-# --- FIX 2: Use CloudScraper for XMPlaylist ---
-def fetch_xmplaylist():
-    # Create a scraper instance to bypass Cloudflare/WAF
-    scraper = cloudscraper.create_scraper()
-    
-    url = f"https://xmplaylist.com/api/station/{XM_CHANNEL}"
-    
+# --- STATE MANAGEMENT ---
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    return {"playlist_id": None, "volume": 1}
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+# --- XM FETCHING ---
+def fetch_xm_tracks():
+    scraper = cloudscraper.create_scraper() # Fixes 403 Error
     try:
-        # Use scraper.get instead of requests.get
-        response = scraper.get(url)
-        response.raise_for_status()
+        url = f"https://xmplaylist.com/api/station/{XM_CHANNEL}"
+        resp = scraper.get(url)
+        resp.raise_for_status()
+        data = resp.json()
     except Exception as e:
-        print(f"Error fetching XMPlaylist: {e}")
+        print(f"Error fetching XM: {e}")
         return []
 
-    data = response.json()
-
-    # Save local backup
-    with open(XM_JSON_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-    track_uris = []
+    # Extract Spotify URIs
+    uris = []
     for item in data.get("results", []):
         for link in item.get("links", []):
-            if link.get("site") == "spotify":
-                # Clean up ID extraction
-                raw_url = link["url"]
-                # Handle cases like https://open.spotify.com/track/ID?si=...
-                if "/track/" in raw_url:
-                    track_id = raw_url.split("/track/")[1].split("?")[0]
-                    track_uris.append(f"spotify:track:{track_id}")
+            if link["site"] == "spotify" and "/track/" in link["url"]:
+                tid = link["url"].split("/track/")[1].split("?")[0]
+                uris.append(f"spotify:track:{tid}")
                 break
+    return uris
 
-    return track_uris
-
+# --- MAIN LOGIC ---
 if __name__ == "__main__":
-    playlist_id = os.getenv("SPOTIFY_PLAYLIST_ID")
+    print("Starting sync...")
+    token = get_access_token()
+    state = load_state()
     
-    print(f"Fetching tracks for channel: {XM_CHANNEL}...")
-    xm_tracks = fetch_xmplaylist()
+    current_id = state.get("playlist_id")
+    current_vol = state.get("volume", 1)
     
-    if not xm_tracks:
-        print("No tracks fetched from XMPlaylist.")
+    # 1. Check if we need a new playlist (First run, or current is full/deleted)
+    need_new_playlist = False
+    
+    if not current_id:
+        need_new_playlist = True
     else:
-        print(f"Fetched {len(xm_tracks)} tracks from XMPlaylist.")
-        if playlist_id:
-            add_tracks_to_playlist(playlist_id, xm_tracks)
-            print("Tracks added to Spotify playlist.")
-        else:
-            print("No SPOTIFY_PLAYLIST_ID found in env.")
+        size = get_playlist_size(token, current_id)
+        if size is None:
+            print("Current playlist not found. Creating new one.")
+            need_new_playlist = True
+        elif size >= PLAYLIST_LIMIT:
+            print(f"Playlist Full ({size} tracks). Rotating...")
+            # Rename the old one to lock it in history
+            rename_playlist(token, current_id, f"{PLAYLIST_BASE_NAME} - Vol {current_vol}")
+            current_vol += 1
+            need_new_playlist = True
+    
+    # 2. Create new playlist if needed
+    if need_new_playlist:
+        user_id = get_user_id(token)
+        # We name the current one "Current" or "Latest" so it's easy to find
+        new_name = f"{PLAYLIST_BASE_NAME} - Vol {current_vol} (Current)"
+        current_id = create_playlist(token, user_id, new_name)
+        print(f"Created new playlist: {new_name}")
+        
+        # Update State
+        state["playlist_id"] = current_id
+        state["volume"] = current_vol
+        save_state(state)
+
+    # 3. Add Tracks
+    tracks = fetch_xm_tracks()
+    if tracks:
+        print(f"Adding {len(tracks)} tracks to Volume {current_vol}...")
+        add_tracks(token, current_id, tracks)
+        print("Done.")
+    else:
+        print("No tracks found on XMPlaylist.")
+
+    # 4. Save state one last time to be sure
+    save_state(state)
