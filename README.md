@@ -46,10 +46,10 @@ Securely store the credentials within the repository's GitHub Actions secrets va
 
 Modify `xm_to_spotify.py` to define the target data source. Update the `XML_CHANNEL` constant to match the desired station identifier as defined in the XMPlaylist URL schema.
 
-`
+```
 # Constants
 XML_CHANNEL = "1stwave"  # Example: "octone", "lithium", "bpm"
-`
+```
 
 ### **5. Scheduling Strategy**
 
