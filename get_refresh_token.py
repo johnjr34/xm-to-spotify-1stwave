@@ -1,6 +1,7 @@
 import requests
 from urllib.parse import urlparse, parse_qs
 import json
+import os
 
 # ---------------- CONFIG ----------------
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
