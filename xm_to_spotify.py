@@ -70,10 +70,16 @@ def add_tracks(token, playlist_id, track_uris):
         time.sleep(0.5)
 
 # --- STATE & DATABASE MANAGEMENT ---
+# --- STATE & DATABASE MANAGEMENT ---
 def load_state():
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(STATE_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            # File exists but is empty or broken. Return default.
+            print("State file empty or invalid. Starting fresh.")
+            return {"playlist_id": None, "volume": 1}
     return {"playlist_id": None, "volume": 1}
 
 def save_state(state):
@@ -82,14 +88,17 @@ def save_state(state):
 
 def load_seen_tracks():
     if os.path.exists(SEEN_TRACKS_FILE):
-        with open(SEEN_TRACKS_FILE, "r") as f:
-            # We use a set() for super fast lookups
-            return set(json.load(f))
+        try:
+            with open(SEEN_TRACKS_FILE, "r") as f:
+                return set(json.load(f))
+        except (json.JSONDecodeError, ValueError):
+            # File exists but is empty or broken. Return empty set.
+            print("Seen tracks file empty or invalid. Starting fresh.")
+            return set()
     return set()
 
 def save_seen_tracks(seen_set):
     with open(SEEN_TRACKS_FILE, "w") as f:
-        # Convert set back to list for JSON
         json.dump(list(seen_set), f)
 
 # --- XM FETCHING ---
