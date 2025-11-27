@@ -21,6 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
+          pip3 install cloudscraper
           pip3 install requests
 
       - name: Run XM to Spotify script
