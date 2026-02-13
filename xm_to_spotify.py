@@ -30,7 +30,7 @@ def get_access_token():
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
     }
-    response = requests.post(url, data=data)
+    response = requests.post(url, headers=headers, data=data)
     response.raise_for_status()
     return response.json()["access_token"]
 
