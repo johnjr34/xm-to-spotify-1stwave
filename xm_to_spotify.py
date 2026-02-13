@@ -23,6 +23,7 @@ PLAYLIST_LIMIT = 9900
 # --- AUTHENTICATION ---
 def get_access_token():
     url = "https://accounts.spotify.com/api/token"
+    headers = {"Content-Type: application/x-www-form-urlencoded"}
     data = {
         "grant_type": "refresh_token",
         "refresh_token": REFRESH_TOKEN,
