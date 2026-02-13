@@ -25,8 +25,7 @@ def get_access_token():
     url = "https://accounts.spotify.com/api/token"
     headers = {"Content-Type: application/x-www-form-urlencoded"}
     data = {
-        "grant_type": "refresh_token",
-        "refresh_token": REFRESH_TOKEN,
+        "grant_type": "client_credentials",
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET
     }
